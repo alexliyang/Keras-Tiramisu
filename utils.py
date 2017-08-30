@@ -8,6 +8,7 @@ import cv2
 from keras.utils import to_categorical
 from keras.callbacks import Callback
 
+# Taken from Mappillary Vistas demo.py
 def apply_color_map(image_array, labels):
     color_array = np.zeros((image_array.shape[0], image_array.shape[1], 3), dtype=np.uint8)
 
