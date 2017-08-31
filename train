@@ -2,6 +2,7 @@
 
 import argparse
 import os
+import pickle
 
 from keras import optimizers
 from keras.callbacks import ModelCheckpoint
@@ -37,6 +38,10 @@ checkpoint = ModelCheckpoint(opt.weights, save_best_only=True, save_weights_only
 tensorboard = TensorBoard(batch_size=opt.batch_size)
 visualization = Visualization(resize_shape=(opt.crop_width, opt.crop_height), batch_steps=10, name=str(opt.gpu))
 
+# Load class weights
+#class_weights = pickle.load(open("class_weights.p", "rb"))
+class_weights = []
+
 #### Train initially with random crops ####
 
 # Generators
@@ -47,7 +52,7 @@ optim = optimizers.Adam(lr=opt.lr, decay=opt.decay)
 tiramisu = model.build(opt.crop_width, opt.crop_height, 66)
 tiramisu.compile(optim, 'categorical_crossentropy', metrics=['categorical_accuracy'])
 tiramisu.fit_generator(train_generator, 18000/opt.batch_size, opt.epochs, callbacks=[checkpoint, tensorboard, visualization], 
-                       validation_data=val_generator, validation_steps=2000/opt.batch_size, class_weight=[])
+                       validation_data=val_generator, validation_steps=2000/opt.batch_size, class_weight=class_weights)
                        
 #### Finetune with full size image and lower learning rate ####
                        
@@ -59,4 +64,4 @@ optim = optimizers.Adam(lr=opt.lr/10)
 tiramisu = model.build(opt.image_width, opt.image_height, 66, weights_path=opt.weights)
 tiramisu.compile(optim, 'categorical_crossentropy', metrics=['categorical_accuracy'])
 tiramisu.fit_generator(train_generator, 18000/opt.batch_size, opt.epochs, callbacks=[checkpoint, tensorboard, visualization], 
-                       validation_data=val_generator, validation_steps=2000/opt.batch_size, class_weight=[])
+                       validation_data=val_generator, validation_steps=2000/opt.batch_size, class_weight=class_weights)

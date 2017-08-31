@@ -1,0 +1,30 @@
+#!/usr/bin/python
+
+import glob
+import pickle
+
+import numpy as np
+import cv2
+
+image_files_list = glob.glob('datasets/mapillary/training/images/*')
+label_files_list = glob.glob('datasets/mapillary/training/instances/*')
+
+class_weights = {i: 0.0 for i in range(66)}
+dataset_mean = 0.0
+dataset_std = 0.0
+for image_file, label_file in zip(image_files_list, label_files_list):
+    image = cv2.imread(image_file, 1)
+    label = cv2.imread(label_file, 0)
+    
+    dataset_mean += np.mean(image)/18000.0
+    dataset_std += np.std(image)/18000.0
+    
+    for i in class_weights:
+        class_count = np.sum(label == i)
+        if class_count == 0:
+            class_count = 1 # To avoid infinity
+        class_weights[i] += (label.size/float(class_count))/18000.0
+    
+print (class_weights)
+print 'Mean: ' + str(dataset_mean) + ', std: ' + (dataset_std)
+pickle.dump(class_weights, open("class_weights.p", "wb"))

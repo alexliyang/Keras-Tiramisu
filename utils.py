@@ -96,6 +96,7 @@ class Visualization(Callback):
         self.name = name
         self.counter = 0
 
+        # TODO: Remove this lazy hardcoded paths
         self.test_images_list = glob.glob('datasets/mapillary/testing/images/*')
         with open('datasets/mapillary/config.json') as config_file:
             config = json.load(config_file)

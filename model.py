@@ -1,28 +1,26 @@
-from keras.layers import BatchNormalization
 from keras.layers import Activation
+from keras.layers import Lambda
 from keras.layers import Conv2D
 from keras.layers import Conv2DTranspose
-from keras.layers import Dropout
+from keras.layers import AlphaDropout
 from keras.layers import MaxPooling2D
 from keras.layers import concatenate
 from keras.layers import Input
 from keras.models import Model
 
 def layer(k, x):
-    x = BatchNormalization()(x)
-    x = Activation('elu')(x)
-    x = Conv2D(k, 3, padding='same')(x)
-    return Dropout(0.2)(x)
+    x = Activation('selu')(x)
+    x = Conv2D(k, 3, padding='same', kernel_initializer='lecun_normal')(x)
+    return AlphaDropout(0.2)(x)
 
 def transitionDown(filters, x):
-    x = BatchNormalization()(x)
-    x = Activation('elu')(x)
-    x = Conv2D(filters, 1, padding='same')(x)
-    x = Dropout(0.2)(x)
+    x = Activation('selu')(x)
+    x = Conv2D(filters, 1, padding='same', kernel_initializer='lecun_normal')(x)
+    x = AlphaDropout(0.2)(x)
     return MaxPooling2D(pool_size=(2,2), strides=(2,2))(x)
 
 def transitionUp(filters, x):
-    return Conv2DTranspose(filters, 3, padding='same', strides=(2,2))(x)
+    return Conv2DTranspose(filters, 3, padding='same', strides=(2,2), kernel_initializer='lecun_normal')(x)
 
 def denseBlock(k, n, x):
     for i in range(n):
@@ -30,9 +28,10 @@ def denseBlock(k, n, x):
     return x
 
 def build(width, height, n_classes, weights_path=None):
-    inputs = Input(shape=(height, width, 3))
-
-    x = Conv2D(48, 3, padding='same')(inputs)
+    input = Input(shape=(height, width, 3))
+    
+    x = Lambda(lambda x: (x - 127.5)/255.0)(input) # Normalize to approx 0 mean and 1 stddev
+    x = Conv2D(48, 3, padding='same', kernel_initializer='lecun_normal')(x)
 
     # DOWN
     skip1 = denseBlock(16, 4, x)
@@ -70,9 +69,9 @@ def build(width, height, n_classes, weights_path=None):
     x = denseBlock(16, 4, x)
 
     # OUTPUT
-    outputs = Conv2D(n_classes, 1, activation='softmax')(x)
+    output = Conv2D(n_classes, 1, activation='softmax')(x)
 
-    model = Model(inputs=inputs, outputs=outputs)
+    model = Model(inputs=input, outputs=output)
     if weights_path is not None:
         model.load_weights(weights_path)
     return model
