@@ -57,13 +57,7 @@ class MapillaryGenerator(Sequence):
     def __len__(self):
         return len(self.image_path_list) // self.batch_size
         
-    def __getitem__(self, i):
-        if i == 0:
-            # Shuffle dataset on each epoch
-            c = list(zip(self.image_path_list, self.label_path_list))
-            random.shuffle(c)
-            self.image_path_list, self.label_path_list = zip(*c)
-    
+    def __getitem__(self, i):         
         images = [cv2.resize(cv2.imread(image_path, 1), self.resize_shape) for image_path in self.image_path_list[i*self.batch_size:(i+1)*self.batch_size]]
         labels = [cv2.resize(cv2.imread(label_path, 0), self.resize_shape) for label_path in self.label_path_list[i*self.batch_size:(i+1)*self.batch_size]]
         
@@ -81,6 +75,12 @@ class MapillaryGenerator(Sequence):
             n += 1
         
         return self.X, self.Y
+        
+    def on_epoch_end(self):
+        # Shuffle dataset for next epoch
+        c = list(zip(self.image_path_list, self.label_path_list))
+        random.shuffle(c)
+        self.image_path_list, self.label_path_list = zip(*c)
                 
 class Visualization(Callback):
     def __init__(self, resize_shape=(640, 360), batch_steps=10, n_gpu=1, **kwargs):
