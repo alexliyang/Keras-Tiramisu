@@ -25,7 +25,6 @@ sess = K.get_session()
 for n in tf.get_default_graph().as_graph_def().node:
     print(n.name)
 
-
 inference_graph = graph_util.convert_variables_to_constants(sess, sess.graph.as_graph_def(), ['output'])
 inference_graph = graph_util.remove_training_nodes(inference_graph) # Just in case
 

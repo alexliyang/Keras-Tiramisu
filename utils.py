@@ -7,6 +7,12 @@ import numpy as np
 import cv2
 from keras.utils import to_categorical
 from keras.callbacks import Callback
+from keras.layers import concatenate
+from keras.layers.core import Lambda
+from keras.models import Model
+from keras.utils.data_utils import Sequence
+
+import tensorflow as tf
 
 # Taken from Mappillary Vistas demo.py
 def apply_color_map(image_array, labels):
@@ -30,70 +36,58 @@ def random_crop(image, label, crop_shape):
     else:
         raise Exception('Crop shape exceeds image dimensions!')
         
-
-def data_generator(folder='datasets/mapillary', mode='training', batch_size=32, crop_shape=(224, 224), resize_shape=(640, 360), horizontal_flip=True):
-    # read in config file
-    with open(os.path.join(folder, 'config.json')) as config_file:
-        config = json.load(config_file)
+class MapillaryGenerator(Sequence):
+    def __init__(self, folder='datasets/mapillary', mode='training', n_classes=66, batch_size=3, crop_shape=(224, 224), resize_shape=(640, 360), horizontal_flip=True):
+        self.image_path_list = glob.glob(os.path.join(folder, mode, 'images/*'))
+        self.label_path_list = glob.glob(os.path.join(folder, mode, 'instances/*'))
+        self.n_classes = n_classes
+        self.batch_size = batch_size
+        self.crop_shape = crop_shape
+        self.resize_shape = resize_shape
+        self.horizontal_flip = horizontal_flip
         
-    # get lists of files
-    images_list = glob.glob(os.path.join(folder, mode, 'images/*'))
-    labels_list = glob.glob(os.path.join(folder, mode, 'labels/*'))
-    instances_list = glob.glob(os.path.join(folder, mode, 'instances/*'))
+        # Preallocate memory
+        if crop_shape is not None:
+            self.X = np.zeros((batch_size, crop_shape[1], crop_shape[0], 3), dtype='float32')
+            self.Y = np.zeros((batch_size, crop_shape[1], crop_shape[0], self.n_classes), dtype='float32')
+        else:
+            self.X = np.zeros((batch_size, resize_shape[1], resize_shape[0], 3), dtype='float32')
+            self.Y = np.zeros((batch_size, resize_shape[1], resize_shape[0], self.n_classes), dtype='float32')
+        
+    def __len__(self):
+        return len(self.image_path_list) // self.batch_size
+        
+    def __getitem__(self, i):
+        if i == 0:
+            # Shuffle dataset on each epoch
+            c = list(zip(self.image_path_list, self.label_path_list))
+            random.shuffle(c)
+            self.image_path_list, self.label_path_list = zip(*c)
     
-    # do some checks
-    if (len(images_list) == 0) or (len(labels_list) == 0) or (len(instances_list) == 0):
-        raise Exception('No dataset samples found!')
+        images = [cv2.resize(cv2.imread(image_path, 1), self.resize_shape) for image_path in self.image_path_list[i*self.batch_size:(i+1)*self.batch_size]]
+        labels = [cv2.resize(cv2.imread(label_path, 0), self.resize_shape) for label_path in self.label_path_list[i*self.batch_size:(i+1)*self.batch_size]]
         
-    if (len(images_list) != len(labels_list)) or (len(images_list) != len(instances_list)):
-        raise Exception('Dataset is corrupted! Missing or unexpected samples')
-    
-    # allocate batch memory space
-    if crop_shape is not None:
-        X = np.zeros((batch_size, crop_shape[1], crop_shape[0], 3), dtype='float32')
-        Y = np.zeros((batch_size, crop_shape[1], crop_shape[0], len(config['labels'])), dtype='float32')
-    else:
-        X = np.zeros((batch_size, resize_shape[1], resize_shape[0], 3), dtype='float32')
-        Y = np.zeros((batch_size, resize_shape[1], resize_shape[0], len(config['labels'])), dtype='float32')
-    
-    while True:
-        # Shuffle
-        c = list(zip(images_list, labels_list, instances_list))
-        random.shuffle(c)
-        images_list, labels_list, instances_list = zip(*c)
-        
-        sample_idx = 0
-        for image_path, label_path, instance_path in zip(images_list, labels_list, instances_list):
-        
-            # Read sample
-            image = cv2.resize(cv2.imread(image_path, 1), resize_shape)
-            label = cv2.resize(cv2.imread(instance_path, 0), resize_shape)
-            
-            # Random crop if required
-            if crop_shape is not None:
-                image, label = random_crop(image, label, crop_shape) 
-            
-            # Random horizontal flip
-            if horizontal_flip and (random.random() < 0.5):
+        n = 0
+        for image, label in zip(images, labels):
+            if self.crop_shape is not None:
+                image, label = random_crop(image, label, self.crop_shape)
+                
+            if self.horizontal_flip and (random.random() < 0.5):
                 image = cv2.flip(image, 1)
                 label = cv2.flip(label, 1)
-
-            # Add to batch
-            X[sample_idx] = image
-            Y[sample_idx] = to_categorical(label, len(config['labels'])).reshape((label.shape[0], label.shape[1], -1))
-            sample_idx += 1
-            
-            # Done with batch
-            if sample_idx == batch_size:
-                sample_idx = 0
-                yield X,Y
+                
+            self.X[n] = image
+            self.Y[n] = to_categorical(label, self.n_classes).reshape((label.shape[0], label.shape[1], -1))
+            n += 1
+        
+        return self.X, self.Y
                 
 class Visualization(Callback):
-    def __init__(self, resize_shape=(640, 360), batch_steps=10, name='', **kwargs):
+    def __init__(self, resize_shape=(640, 360), batch_steps=10, n_gpu=1, **kwargs):
         super(Visualization, self).__init__(**kwargs)
         self.resize_shape = resize_shape
         self.batch_steps = batch_steps
-        self.name = name
+        self.n_gpu = n_gpu
         self.counter = 0
 
         # TODO: Remove this lazy hardcoded paths
@@ -109,11 +103,54 @@ class Visualization(Callback):
         if self.counter == self.batch_steps:
             self.counter = 0
             
-            test_image = cv2.resize(cv2.imread(random.choice(self.test_images_list), 1), self.resize_shape)                
-            output = self.model.predict(np.array([test_image]), batch_size=1)[0]
+            test_image = cv2.resize(cv2.imread(random.choice(self.test_images_list), 1), self.resize_shape)
+            
+            inputs = [test_image]*self.n_gpu          
+            output = self.model.predict(np.array(inputs), batch_size=self.n_gpu)[0]
         
-            cv2.imshow(self.name + ': input', test_image)
+            cv2.imshow('input', test_image)
             cv2.waitKey(1)
-            cv2.imshow(self.name + ': output', apply_color_map(np.argmax(output, axis=-1), self.labels))
+            cv2.imshow('output', apply_color_map(np.argmax(output, axis=-1), self.labels))
             cv2.waitKey(1)
+
+def make_parallel(model, gpu_count):
+    def get_slice(data, idx, parts):
+        shape = tf.shape(data)
+        size = tf.concat([ shape[:1] // parts, shape[1:] ],axis=0)
+        stride = tf.concat([ shape[:1] // parts, shape[1:]*0 ],axis=0)
+        start = stride * idx
+        return tf.slice(data, start, size)
+
+    outputs_all = []
+    for i in range(len(model.outputs)):
+        outputs_all.append([])
+
+    #Place a copy of the model on each GPU, each getting a slice of the batch
+    for i in range(gpu_count):
+        with tf.device('/gpu:%d' % i):
+            with tf.name_scope('tower_%d' % i) as scope:
+
+                inputs = []
+                #Slice each input into a piece for processing on this GPU
+                for x in model.inputs:
+                    input_shape = tuple(x.get_shape().as_list())[1:]
+                    slice_n = Lambda(get_slice, output_shape=input_shape, arguments={'idx':i,'parts':gpu_count})(x)
+                    inputs.append(slice_n)                
+
+                outputs = model(inputs)
+                
+                if not isinstance(outputs, list):
+                    outputs = [outputs]
+                
+                #Save all the outputs for merging back together later
+                for l in range(len(outputs)):
+                    outputs_all[l].append(outputs[l])
+
+    # merge outputs on CPU
+    with tf.device('/cpu:0'):
+        merged = []
+        for outputs in outputs_all:
+            merged.append(concatenate(outputs, axis=0))
+            
+    return Model(inputs=model.inputs, outputs=merged)
         

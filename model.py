@@ -30,7 +30,7 @@ def denseBlock(k, n, x):
 def build(width, height, n_classes, weights_path=None):
     input = Input(shape=(height, width, 3))
     
-    x = Lambda(lambda x: (x - 127.5)/255.0)(input) # Normalize to approx 0 mean and 1 stddev
+    x = Lambda(lambda x: (x - 114.535627228)/68.4730185592)(input) # Normalize to 0 mean and 1 stddev
     x = Conv2D(48, 3, padding='same', kernel_initializer='lecun_normal')(x)
 
     # DOWN
@@ -69,7 +69,7 @@ def build(width, height, n_classes, weights_path=None):
     x = denseBlock(16, 4, x)
 
     # OUTPUT
-    output = Conv2D(n_classes, 1, activation='softmax')(x)
+    output = Conv2D(n_classes, 1, activation='softmax', kernel_initializer='lecun_normal')(x)
 
     model = Model(inputs=input, outputs=output)
     if weights_path is not None:
