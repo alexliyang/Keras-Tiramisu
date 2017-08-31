@@ -2,17 +2,29 @@ import os
 import glob
 import random
 import json
+import pickle
 
 import numpy as np
 import cv2
+
 from keras.utils import to_categorical
 from keras.callbacks import Callback
 from keras.layers import concatenate
 from keras.layers.core import Lambda
 from keras.models import Model
 from keras.utils.data_utils import Sequence
+from keras import backend as K
 
 import tensorflow as tf
+
+class WeightedCrossentropy:
+    def __init__(self):
+        self.class_weights = pickle.load(open('class_weights.p', 'rb'))
+
+    def loss(self, y_true, y_pred):
+        loss = K.categorical_crossentropy(y_true, y_pred)
+        labels = np.argmax(y_true)
+        return loss * self.class_weights[labels]
 
 # Taken from Mappillary Vistas demo.py
 def apply_color_map(image_array, labels):
