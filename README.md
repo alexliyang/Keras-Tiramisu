@@ -1,6 +1,8 @@
 # Keras-Tiramisu
 A Keras implementation of [The One Hundred Layers Tiramisu](https://arxiv.org/abs/1611.09326)
 
+<img src="http://d2gk7xgygi98cy.cloudfront.net/1905-3-large.jpg" alt="Tasty Tiramisu" width="600px">
+
 ## Requirements
 
 * Python (tested with 2.7, 3.x should work too)
