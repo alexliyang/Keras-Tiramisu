@@ -26,7 +26,12 @@ parser.add_argument('--n_cpu', type=int, default=8, help='Number of CPU threads 
 parser.add_argument('--weights', type=str, default='weights.h5', help='output path for the weights file')
 opt = parser.parse_args()
 
-print(opt)    
+print(opt)
+
+# Batch size has to be incremented by number of GPUs (each GPU processes batch_size samples)
+opt.batch_size *= opt.n_gpu 
+
+#### Train initially with random crops ####
 
 # Callbacks
 checkpoint = ModelCheckpoint(opt.weights, monitor='val_categorical_accuracy', mode='max', save_best_only=True, save_weights_only=True, verbose=1)
@@ -34,34 +39,44 @@ tensorboard = TensorBoard(batch_size=opt.batch_size)
 visualization = Visualization(resize_shape=(opt.crop_width, opt.crop_height), batch_steps=10, n_gpu=opt.n_gpu)
 lr_decay = LearningRateScheduler(ExpDecay(opt.lr, opt.decay).scheduler)
 
-# Batch size has to be incremented by number of GPUs (each GPU processes batch_size samples)
-opt.batch_size *= opt.n_gpu 
-
-#### Train initially with random crops ####
-
 # Generators
 train_generator = MapillaryGenerator(batch_size=opt.batch_size, crop_shape=(opt.crop_width, opt.crop_height), resize_shape=(opt.image_width, opt.image_height), horizontal_flip=opt.random_flip)
 val_generator = MapillaryGenerator(mode='validation', batch_size=opt.batch_size, crop_shape=(opt.crop_width, opt.crop_height), resize_shape=(opt.image_width, opt.image_height), horizontal_flip=opt.random_flip)
 
-# Loss
-weighted_crossentropy = WeightedCrossentropy()
-
+# Optimizer
 optim = optimizers.Adam(lr=opt.lr)
+
+# Model
 tiramisu = model.build(opt.crop_width, opt.crop_height, 66)
 tiramisu = make_parallel(tiramisu, opt.n_gpu)
-tiramisu.compile(optim, weighted_crossentropy.loss, metrics=['categorical_accuracy'])
+
+# Training
+tiramisu.compile(optim, WeightedCrossentropy().loss, metrics=['categorical_accuracy'])
 tiramisu.fit_generator(train_generator, len(train_generator), opt.epochs, callbacks=[checkpoint, tensorboard, visualization, lr_decay], 
                        validation_data=val_generator, validation_steps=len(val_generator), workers=opt.n_cpu)
                        
-#### Finetune with full size image and lower learning rate ####
+#######################################
+                       
+#### Finetune with full size image ####
+
+# Callbacks
+visualization = Visualization(resize_shape=(opt.image_width, opt.image_height), batch_steps=10, n_gpu=opt.n_gpu)
+lr_decay = LearningRateScheduler(ExpDecay(opt.lr/10, opt.decay).scheduler)
                        
 # Generators
 train_generator = MapillaryGenerator(batch_size=opt.batch_size, crop_shape=None, resize_shape=(opt.image_width, opt.image_height), horizontal_flip=opt.random_flip)
 val_generator = MapillaryGenerator(mode='validation', batch_size=opt.batch_size, crop_shape=None, resize_shape=(opt.image_width, opt.image_height), horizontal_flip=opt.random_flip)                       
 
+# Optimizer
 optim = optimizers.Adam(lr=opt.lr/10)
+
+# Model
 tiramisu = model.build(opt.image_width, opt.image_height, 66, weights_path=opt.weights)
 tiramisu = make_parallel(tiramisu, opt.n_gpu)
-tiramisu.compile(optim, weighted_crossentropy.loss, metrics=['categorical_accuracy'])
-tiramisu.fit_generator(train_generator, len(train_generator), opt.epochs, callbacks=[checkpoint, tensorboard, visualization], 
+
+# Training
+tiramisu.compile(optim, WeightedCrossentropy().loss, metrics=['categorical_accuracy'])
+tiramisu.fit_generator(train_generator, len(train_generator), opt.epochs, callbacks=[checkpoint, tensorboard, visualization, lr_decay], 
                        validation_data=val_generator, validation_steps=len(val_generator), workers=opt.n_cpu)
+                       
+#######################################

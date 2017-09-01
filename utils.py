@@ -23,7 +23,7 @@ class WeightedCrossentropy:
 
     def loss(self, y_true, y_pred):
         loss = K.categorical_crossentropy(y_true, y_pred)
-        labels = np.argmax(y_true)
+        labels = np.argmax(y_true, axis=-1)
         return loss * self.class_weights[labels]
         
 class MapillaryGenerator(Sequence):

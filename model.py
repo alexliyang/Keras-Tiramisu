@@ -7,20 +7,21 @@ from keras.layers import MaxPooling2D
 from keras.layers import concatenate
 from keras.layers import Input
 from keras.models import Model
+from keras import regularizers
 
 def layer(k, x):
     x = Activation('selu')(x)
-    x = Conv2D(k, 3, padding='same', kernel_initializer='lecun_normal')(x)
+    x = Conv2D(k, 3, padding='same', kernel_initializer='lecun_normal', kernel_regularizer=regularizers.l2(1e-4))(x)
     return AlphaDropout(0.2)(x)
 
 def transitionDown(filters, x):
     x = Activation('selu')(x)
-    x = Conv2D(filters, 1, padding='same', kernel_initializer='lecun_normal')(x)
+    x = Conv2D(filters, 1, padding='same', kernel_initializer='lecun_normal', kernel_regularizer=regularizers.l2(1e-4))(x)
     x = AlphaDropout(0.2)(x)
     return MaxPooling2D(pool_size=(2,2), strides=(2,2))(x)
 
 def transitionUp(filters, x):
-    return Conv2DTranspose(filters, 3, padding='same', strides=(2,2), kernel_initializer='lecun_normal')(x)
+    return Conv2DTranspose(filters, 3, padding='same', strides=(2,2), kernel_initializer='lecun_normal', kernel_regularizer=regularizers.l2(1e-4))(x)
 
 def denseBlock(k, n, x):
     for i in range(n):
@@ -31,7 +32,7 @@ def build(width, height, n_classes, weights_path=None):
     input = Input(shape=(height, width, 3))
     
     x = Lambda(lambda x: (x - 114.535627228)/68.4730185592)(input) # Normalize to 0 mean and 1 stddev
-    x = Conv2D(48, 3, padding='same', kernel_initializer='lecun_normal')(x)
+    x = Conv2D(48, 3, padding='same', kernel_initializer='lecun_normal', kernel_regularizer=regularizers.l2(1e-4))(x)
 
     # DOWN
     skip1 = denseBlock(16, 4, x)
@@ -69,7 +70,7 @@ def build(width, height, n_classes, weights_path=None):
     x = denseBlock(16, 4, x)
 
     # OUTPUT
-    output = Conv2D(n_classes, 1, activation='softmax', kernel_initializer='lecun_normal')(x)
+    output = Conv2D(n_classes, 1, activation='softmax', kernel_initializer='lecun_normal', kernel_regularizer=regularizers.l2(1e-4))(x)
 
     model = Model(inputs=input, outputs=output)
     if weights_path is not None:
