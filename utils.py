@@ -28,8 +28,8 @@ class WeightedCrossentropy:
         
 class MapillaryGenerator(Sequence):
     def __init__(self, folder='datasets/mapillary', mode='training', n_classes=66, batch_size=3, crop_shape=(224, 224), resize_shape=(640, 360), horizontal_flip=True):
-        self.image_path_list = glob.glob(os.path.join(folder, mode, 'images/*'))
-        self.label_path_list = glob.glob(os.path.join(folder, mode, 'instances/*'))
+        self.image_path_list = sorted(glob.glob(os.path.join(folder, mode, 'images/*')))
+        self.label_path_list = sorted(glob.glob(os.path.join(folder, mode, 'instances/*')))
         self.n_classes = n_classes
         self.batch_size = batch_size
         self.crop_shape = crop_shape
@@ -61,7 +61,7 @@ class MapillaryGenerator(Sequence):
                 label = cv2.flip(label, 1)
                 
             self.X[n] = image
-            self.Y[n] = to_categorical(label, self.n_classes).reshape((label.shape[0], label.shape[1], -1))
+            self.Y[n] = to_categorical(label, self.n_classes).reshape((label.shape[0], label.shape[1], -1))            
             n += 1
         
         return self.X, self.Y
@@ -113,6 +113,9 @@ class ExpDecay:
 
 # Taken from https://github.com/kuza55/keras-extras/blob/master/utils/multi_gpu.py
 def make_parallel(model, gpu_count):
+    if gpu_count < 2:
+        return model
+        
     def get_slice(data, idx, parts):
         shape = tf.shape(data)
         size = tf.concat([ shape[:1] // parts, shape[1:] ],axis=0)
