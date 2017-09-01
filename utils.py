@@ -25,28 +25,6 @@ class WeightedCrossentropy:
         loss = K.categorical_crossentropy(y_true, y_pred)
         labels = np.argmax(y_true)
         return loss * self.class_weights[labels]
-
-# Taken from Mappillary Vistas demo.py
-def apply_color_map(image_array, labels):
-    color_array = np.zeros((image_array.shape[0], image_array.shape[1], 3), dtype=np.uint8)
-
-    for label_id, label in enumerate(labels):
-        # set all pixels with the current label to the color of the current label
-        color_array[image_array == label_id] = label["color"]
-
-    return color_array
-    
-def random_crop(image, label, crop_shape):
-    if (image.shape[0] != label.shape[0]) or (image.shape[1] != label.shape[1]):
-        raise Exception('Image and label must have the same dimensions!')
-        
-    if (crop_shape[0] < image.shape[1]) and (crop_shape[1] < image.shape[0]):
-        x = random.randrange(image.shape[1]-crop_shape[0])
-        y = random.randrange(image.shape[0]-crop_shape[1])
-        
-        return image[y:y+crop_shape[1], x:x+crop_shape[0], :], label[y:y+crop_shape[1], x:x+crop_shape[0]]
-    else:
-        raise Exception('Crop shape exceeds image dimensions!')
         
 class MapillaryGenerator(Sequence):
     def __init__(self, folder='datasets/mapillary', mode='training', n_classes=66, batch_size=3, crop_shape=(224, 224), resize_shape=(640, 360), horizontal_flip=True):
@@ -76,7 +54,7 @@ class MapillaryGenerator(Sequence):
         n = 0
         for image, label in zip(images, labels):
             if self.crop_shape is not None:
-                image, label = random_crop(image, label, self.crop_shape)
+                image, label = _random_crop(image, label, self.crop_shape)
                 
             if self.horizontal_flip and (random.random() < 0.5):
                 image = cv2.flip(image, 1)
@@ -122,9 +100,18 @@ class Visualization(Callback):
         
             cv2.imshow('input', test_image)
             cv2.waitKey(1)
-            cv2.imshow('output', apply_color_map(np.argmax(output, axis=-1), self.labels))
+            cv2.imshow('output', _apply_color_map(np.argmax(output, axis=-1), self.labels))
             cv2.waitKey(1)
+            
+class ExpDecay:
+    def __init__(self, initial_lr, decay):
+        self.initial_lr = initial_lr
+        self.decay = decay
+    
+    def scheduler(self, epoch):
+        return self.initial_lr * np.exp(-self.decay*epoch)
 
+# Taken from https://github.com/kuza55/keras-extras/blob/master/utils/multi_gpu.py
 def make_parallel(model, gpu_count):
     def get_slice(data, idx, parts):
         shape = tf.shape(data)
@@ -165,4 +152,26 @@ def make_parallel(model, gpu_count):
             merged.append(concatenate(outputs, axis=0))
             
     return Model(inputs=model.inputs, outputs=merged)
+    
+# Taken from Mappillary Vistas demo.py
+def _apply_color_map(image_array, labels):
+    color_array = np.zeros((image_array.shape[0], image_array.shape[1], 3), dtype=np.uint8)
+
+    for label_id, label in enumerate(labels):
+        # set all pixels with the current label to the color of the current label
+        color_array[image_array == label_id] = label["color"]
+
+    return color_array
+    
+def _random_crop(image, label, crop_shape):
+    if (image.shape[0] != label.shape[0]) or (image.shape[1] != label.shape[1]):
+        raise Exception('Image and label must have the same dimensions!')
+        
+    if (crop_shape[0] < image.shape[1]) and (crop_shape[1] < image.shape[0]):
+        x = random.randrange(image.shape[1]-crop_shape[0])
+        y = random.randrange(image.shape[0]-crop_shape[1])
+        
+        return image[y:y+crop_shape[1], x:x+crop_shape[0], :], label[y:y+crop_shape[1], x:x+crop_shape[0]]
+    else:
+        raise Exception('Crop shape exceeds image dimensions!')
         

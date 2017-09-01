@@ -6,10 +6,10 @@ import os
 from keras import optimizers
 from keras.callbacks import ModelCheckpoint
 from keras.callbacks import TensorBoard
+from keras.callbacks import LearningRateScheduler
 
 import model
-from utils import WeightedCrossentropy, MapillaryGenerator, Visualization, make_parallel
-
+from utils import ExpDecay, WeightedCrossentropy, MapillaryGenerator, Visualization, make_parallel
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--batch_size', type=int, default=3, help='input batch size')
@@ -20,7 +20,7 @@ parser.add_argument('--crop_height', type=int, default=224, help='the crop heigh
 parser.add_argument('--random_flip', type=bool, default=True, help='Do random horizontal flip during training')
 parser.add_argument('--epochs', type=int, default=100, help='number of epochs to train for')
 parser.add_argument('--lr', type=float, default=1e-4, help='learning rate of the optimizer')
-parser.add_argument('--decay', type=float, default=1e-4, help='learning rate decay (per batch update)')
+parser.add_argument('--decay', type=float, default=0.995, help='exponential learning rate decay (per epoch)')
 parser.add_argument('--n_gpu', type=int, default=1, help='Number of GPUs to use')
 parser.add_argument('--n_cpu', type=int, default=8, help='Number of CPU threads to use during data generation')
 parser.add_argument('--weights', type=str, default='weights.h5', help='output path for the weights file')
@@ -32,6 +32,7 @@ print(opt)
 checkpoint = ModelCheckpoint(opt.weights, save_best_only=True, save_weights_only=True, verbose=1)
 tensorboard = TensorBoard(batch_size=opt.batch_size)
 visualization = Visualization(resize_shape=(opt.crop_width, opt.crop_height), batch_steps=10, n_gpu=opt.n_gpu)
+lr_decay = LearningRateScheduler(ExpDecay(opt.lr, opt.decay).scheduler)
 
 # Batch size has to be incremented by number of GPUs (each GPU processes batch_size samples)
 opt.batch_size *= opt.n_gpu 
@@ -45,11 +46,11 @@ val_generator = MapillaryGenerator(mode='validation', batch_size=opt.batch_size,
 # Loss
 weighted_crossentropy = WeightedCrossentropy()
 
-optim = optimizers.Adam(lr=opt.lr, decay=opt.decay)
+optim = optimizers.Adam(lr=opt.lr)
 tiramisu = model.build(opt.crop_width, opt.crop_height, 66)
 tiramisu = make_parallel(tiramisu, opt.n_gpu)
 tiramisu.compile(optim, weighted_crossentropy.loss, metrics=['categorical_accuracy'])
-tiramisu.fit_generator(train_generator, len(train_generator), opt.epochs, callbacks=[checkpoint, tensorboard, visualization], 
+tiramisu.fit_generator(train_generator, len(train_generator), opt.epochs, callbacks=[checkpoint, tensorboard, visualization, lr_decay], 
                        validation_data=val_generator, validation_steps=len(val_generator), workers=opt.n_cpu)
                        
 #### Finetune with full size image and lower learning rate ####
