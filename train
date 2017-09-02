@@ -44,7 +44,7 @@ train_generator = MapillaryGenerator(batch_size=opt.batch_size, crop_shape=(opt.
 val_generator = MapillaryGenerator(mode='validation', batch_size=opt.batch_size, crop_shape=(opt.crop_width, opt.crop_height), resize_shape=(opt.image_width, opt.image_height), horizontal_flip=opt.random_flip)
 
 # Optimizer
-optim = optimizers.Adam(lr=opt.lr)
+optim = optimizers.SGD(lr=opt.lr, momentum=0.9)
 
 # Model
 tiramisu = model.build(opt.crop_width, opt.crop_height, 66)
@@ -68,7 +68,7 @@ train_generator = MapillaryGenerator(batch_size=opt.batch_size, crop_shape=None,
 val_generator = MapillaryGenerator(mode='validation', batch_size=opt.batch_size, crop_shape=None, resize_shape=(opt.image_width, opt.image_height), horizontal_flip=opt.random_flip)                       
 
 # Optimizer
-optim = optimizers.Adam(lr=opt.lr/10)
+optim = optimizers.SGD(lr=opt.lr/10, momentum=0.9)
 
 # Model
 tiramisu = model.build(opt.image_width, opt.image_height, 66, weights_path=opt.weights)
