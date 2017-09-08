@@ -18,7 +18,7 @@ def transitionDown(filters, x):
     x = Activation('selu')(x)
     x = Conv2D(filters, 1, padding='same', kernel_initializer='lecun_normal', kernel_regularizer=regularizers.l2(1e-4))(x)
     x = AlphaDropout(0.2)(x)
-    return MaxPooling2D(pool_size=(2,2), strides=(2,2))(x)
+    return MaxPooling2D(pool_size=2)(x)
 
 def transitionUp(filters, x):
     return Conv2DTranspose(filters, 3, padding='same', strides=(2,2), kernel_initializer='lecun_normal', kernel_regularizer=regularizers.l2(1e-4))(x)

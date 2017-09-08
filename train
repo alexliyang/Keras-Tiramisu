@@ -1,7 +1,6 @@
 #!/usr/bin/python
 
 import argparse
-import os
 
 from keras import optimizers
 from keras.callbacks import ModelCheckpoint
@@ -14,7 +13,7 @@ from utils import ExpDecay, WeightedCrossentropy, MapillaryGenerator, Visualizat
 parser = argparse.ArgumentParser()
 parser.add_argument('--batch_size', type=int, default=3, help='input batch size')
 parser.add_argument('--image_width', type=int, default=640, help='the input image width')
-parser.add_argument('--image_height', type=int, default=360, help='the input image height')
+parser.add_argument('--image_height', type=int, default=320, help='the input image height')
 parser.add_argument('--crop_width', type=int, default=224, help='the crop width')
 parser.add_argument('--crop_height', type=int, default=224, help='the crop height')
 parser.add_argument('--random_flip', type=bool, default=True, help='Do random horizontal flip during training')
@@ -31,7 +30,7 @@ print(opt)
 # Batch size has to be incremented by number of GPUs (each GPU processes batch_size samples)
 opt.batch_size *= opt.n_gpu 
 
-#### Train initially with random crops ####
+#### Train ####
 
 # Callbacks
 checkpoint = ModelCheckpoint(opt.weights, monitor='val_categorical_accuracy', mode='max', save_best_only=True, save_weights_only=True, verbose=1)
@@ -40,8 +39,8 @@ visualization = Visualization(resize_shape=(opt.crop_width, opt.crop_height), ba
 lr_decay = LearningRateScheduler(ExpDecay(opt.lr, opt.decay).scheduler)
 
 # Generators
-train_generator = MapillaryGenerator(batch_size=opt.batch_size, crop_shape=(opt.crop_width, opt.crop_height), resize_shape=(opt.image_width, opt.image_height), horizontal_flip=opt.random_flip)
-val_generator = MapillaryGenerator(mode='validation', batch_size=opt.batch_size, crop_shape=(opt.crop_width, opt.crop_height), resize_shape=(opt.image_width, opt.image_height), horizontal_flip=opt.random_flip)
+train_generator = MapillaryGenerator(batch_size=opt.batch_size, crop_shape=(opt.crop_width, opt.crop_height), resize_shape=(opt.image_width, opt.image_height))
+val_generator = MapillaryGenerator(mode='validation', batch_size=opt.batch_size, crop_shape=None, resize_shape=(opt.crop_width, opt.crop_height))
 
 # Optimizer
 optim = optimizers.SGD(lr=opt.lr, momentum=0.9)
@@ -55,28 +54,5 @@ tiramisu.compile(optim, WeightedCrossentropy().loss, metrics=['categorical_accur
 tiramisu.fit_generator(train_generator, len(train_generator), opt.epochs, callbacks=[checkpoint, tensorboard, visualization, lr_decay], 
                        validation_data=val_generator, validation_steps=len(val_generator), workers=opt.n_cpu)
                        
-#######################################
-                       
-#### Finetune with full size image ####
+###############
 
-# Callbacks
-visualization = Visualization(resize_shape=(opt.image_width, opt.image_height), batch_steps=10, n_gpu=opt.n_gpu)
-lr_decay = LearningRateScheduler(ExpDecay(opt.lr/10, opt.decay).scheduler)
-                       
-# Generators
-train_generator = MapillaryGenerator(batch_size=opt.batch_size, crop_shape=None, resize_shape=(opt.image_width, opt.image_height), horizontal_flip=opt.random_flip)
-val_generator = MapillaryGenerator(mode='validation', batch_size=opt.batch_size, crop_shape=None, resize_shape=(opt.image_width, opt.image_height), horizontal_flip=opt.random_flip)                       
-
-# Optimizer
-optim = optimizers.SGD(lr=opt.lr/10, momentum=0.9)
-
-# Model
-tiramisu = model.build(opt.image_width, opt.image_height, 66, weights_path=opt.weights)
-tiramisu = make_parallel(tiramisu, opt.n_gpu)
-
-# Training
-tiramisu.compile(optim, WeightedCrossentropy().loss, metrics=['categorical_accuracy'])
-tiramisu.fit_generator(train_generator, len(train_generator), opt.epochs, callbacks=[checkpoint, tensorboard, visualization, lr_decay], 
-                       validation_data=val_generator, validation_steps=len(val_generator), workers=opt.n_cpu)
-                       
-#######################################

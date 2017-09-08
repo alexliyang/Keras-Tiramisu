@@ -27,17 +27,24 @@ class WeightedCrossentropy:
         return loss * self.class_weights[labels]
         
 class MapillaryGenerator(Sequence):
-    def __init__(self, folder='datasets/mapillary', mode='training', n_classes=66, batch_size=3, crop_shape=(224, 224), resize_shape=(640, 360), horizontal_flip=True):
+    def __init__(self, folder='datasets/mapillary', mode='training', n_classes=66, batch_size=3, resize_shape=(640, 320), 
+                 crop_shape=(224, 224), horizontal_flip=True, vertical_flip=False, brightness=0.1, rotation=5, zoom=0.1):
+
         self.image_path_list = sorted(glob.glob(os.path.join(folder, mode, 'images/*')))
         self.label_path_list = sorted(glob.glob(os.path.join(folder, mode, 'instances/*')))
+        self.mode = mode
         self.n_classes = n_classes
         self.batch_size = batch_size
-        self.crop_shape = crop_shape
         self.resize_shape = resize_shape
+        self.crop_shape = crop_shape
         self.horizontal_flip = horizontal_flip
+        self.vertical_flip = vertical_flip
+        self.brightness = brightness
+        self.rotation = rotation
+        self.zoom = zoom
         
         # Preallocate memory
-        if crop_shape is not None:
+        if mode == 'training' and self.crop_shape:
             self.X = np.zeros((batch_size, crop_shape[1], crop_shape[0], 3), dtype='float32')
             self.Y = np.zeros((batch_size, crop_shape[1], crop_shape[0], self.n_classes), dtype='float32')
         else:
@@ -53,13 +60,34 @@ class MapillaryGenerator(Sequence):
         
         n = 0
         for image, label in zip(images, labels):
-            if self.crop_shape is not None:
-                image, label = _random_crop(image, label, self.crop_shape)
-                
-            if self.horizontal_flip and (random.random() < 0.5):
-                image = cv2.flip(image, 1)
-                label = cv2.flip(label, 1)
-                
+            # Do augmentation (only if training)
+            if self.mode == 'training':
+                if self.horizontal_flip and random.randint(0,1):
+                    image = cv2.flip(image, 1)
+                    label = cv2.flip(label, 1)
+                if self.vertical_flip and random.randint(0,1):
+                    image = cv2.flip(image, 0)
+                    label = cv2.flip(label, 0)
+                if self.brightness:
+                    factor = 1.0 + abs(random.gauss(mu=0, sigma=self.brightness))
+                    if random.randint(0,1):
+                        factor = 1.0/factor
+                    image = (255.0*((image/255.0)**factor)).astype(np.uint8)
+                if self.rotation:
+                    angle = random.gauss(mu=0.0, sigma=self.rotation)
+                else:
+                    angle = 0.0
+                if self.zoom:
+                    scale = random.gauss(mu=1.0, sigma=self.zoom)
+                else:
+                    scale = 1.0
+                if self.rotation or self.zoom:
+                    M = cv2.getRotationMatrix2D((self.resize_shape[0]/2, self.resize_shape[1]/2), angle, scale)
+                    image = cv2.warpAffine(image, M, self.resize_shape)
+                    label = cv2.warpAffine(label, M, self.resize_shape)
+                if self.crop_shape:
+                    image, label = _random_crop(image, label, self.crop_shape)
+
             self.X[n] = image
             self.Y[n] = to_categorical(label, self.n_classes).reshape((label.shape[0], label.shape[1], -1))            
             n += 1
